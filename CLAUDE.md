@@ -15,21 +15,24 @@ This is **mise-rv-ruby**, a mise backend plugin that manages Ruby versions using
 - **Underlying tool**: [rv](https://github.com/spinel-coop/rv) - Fast Ruby version manager in Rust
 
 ### Compatibility with gem Backend
-This backend is designed to work with mise's built-in `gem` backend through aliasing:
+
+**Important**: The alias feature only works once the plugin is added to the mise registry. For local development with linked plugins, you must use the explicit syntax `rv-ruby:ruby@version`.
+
+Once published to the registry, use aliasing:
 ```toml
 [alias]
 ruby = "rv-ruby"
 
 [tools]
-ruby = "3.3.9"           # Resolves to rv-ruby via alias
+ruby = "3.3.9"           # Resolves to rv-ruby via alias (registry only)
 "gem:bundler" = "latest"  # gem backend finds ruby via alias
 ```
 
-Without alias, use the backend directly:
+For local development (linked plugin):
 ```toml
 [tools]
-rv-ruby = "3.3.9"         # Simple syntax (recommended)
-"gem:bundler" = "latest"  # Won't work without ruby alias
+"rv-ruby:ruby" = "3.3.9"  # Explicit syntax required for linked plugins
+# gem:bundler won't work - install gems manually with mise exec
 ```
 
 ## Development Commands
@@ -39,14 +42,17 @@ rv-ruby = "3.3.9"         # Simple syntax (recommended)
 # Link plugin for development
 mise plugin link --force rv-ruby .
 
-# List available Ruby versions
-mise ls-remote rv-ruby
+# List available Ruby versions (must use explicit syntax for linked plugins)
+mise ls-remote rv-ruby:ruby
 
 # Install a specific Ruby version
-mise install rv-ruby@3.3.9
+mise install rv-ruby:ruby@3.3.9
 
 # Execute Ruby
-mise exec rv-ruby@3.3.9 -- ruby --version
+mise exec rv-ruby:ruby@3.3.9 -- ruby --version
+
+# Install gems manually (gem backend doesn't work with linked plugins)
+mise exec rv-ruby:ruby@3.3.9 -- gem install bundler
 
 # Run full test suite
 mise run test
@@ -238,29 +244,30 @@ end
 
 Before publishing:
 - [ ] All tests pass: `mise run ci`
-- [ ] Version listing works: `mise ls-remote rv-ruby`
-- [ ] Installation works: `mise install rv-ruby@3.3.9`
-- [ ] Ruby execution works: `mise exec rv-ruby@3.3.9 -- ruby --version`
-- [ ] Gem environment is correct: `mise exec rv-ruby@3.3.9 -- gem env`
-- [ ] Explicit syntax works: `mise ls-remote rv-ruby:ruby`
-- [ ] gem backend integration works with alias
+- [ ] Version listing works: `mise ls-remote rv-ruby:ruby`
+- [ ] Installation works: `mise install rv-ruby:ruby@3.3.9`
+- [ ] Ruby execution works: `mise exec rv-ruby:ruby@3.3.9 -- ruby --version`
+- [ ] Gem environment is correct: `mise exec rv-ruby:ruby@3.3.9 -- gem env`
+- [ ] Manual gem installation works: `mise exec rv-ruby:ruby@3.3.9 -- gem install bundler`
+- [ ] After registry: Simple syntax works: `mise install rv-ruby@3.3.9`
+- [ ] After registry: gem backend integration works with alias
 - [ ] Documentation is complete
 - [ ] GitHub repository exists and is public
 
 ## Real-World Examples
 
-### Basic Usage
+### Basic Usage (Registry Plugin)
 ```bash
-# Install rv-ruby plugin
+# Install rv-ruby plugin from registry
 mise plugin install rv-ruby https://github.com/deevus/mise-rv-ruby
 
-# Install Ruby (simple syntax)
+# Install Ruby (simple syntax works after registry installation)
 mise install rv-ruby@3.3.9
 
 # Use Ruby
 mise exec rv-ruby@3.3.9 -- ruby --version
 
-# Or with explicit syntax
+# Or with explicit syntax (also works)
 mise install rv-ruby:ruby@3.3.9
 ```
 
