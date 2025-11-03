@@ -4,7 +4,7 @@
 
 PLUGIN = { -- luacheck: ignore
     -- Required: Plugin name (will be the backend name users reference)
-    name = "rv",
+    name = "rv-ruby",
 
     -- Required: Plugin version (not the tool versions)
     version = "1.0.0",
@@ -16,7 +16,7 @@ PLUGIN = { -- luacheck: ignore
     author = "deevus",
 
     -- Optional: Plugin homepage/repository URL
-    homepage = "https://github.com/deevus/mise-rv",
+    homepage = "https://github.com/deevus/mise-rv-ruby",
 
     -- Optional: Plugin license
     license = "MIT",

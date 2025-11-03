@@ -10,9 +10,10 @@ function PLUGIN:BackendListVersions(ctx)
         error("Tool name cannot be empty")
     end
 
-    -- Only support "ruby" as the tool name
-    if tool ~= "ruby" then
-        error("mise-rv backend only supports 'ruby' as the tool name. Use: rv:ruby@version")
+    -- Accept both "ruby" and "rv-ruby" as the tool name
+    -- This allows both rv-ruby@version and rv-ruby:ruby@version
+    if tool ~= "ruby" and tool ~= "rv-ruby" then
+        error("mise-rv-ruby backend only supports ruby. Use: rv-ruby@version or rv-ruby:ruby@version")
     end
 
     -- Get available Ruby versions from rv

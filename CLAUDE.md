@@ -4,44 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a **mise backend plugin template** for building vfox-style backend plugins. Backend plugins extend mise to manage multiple tools using the `backend:tool` format (e.g., `npm:prettier`, `cargo:ripgrep`), unlike standard plugins that manage a single tool.
+This is **mise-rv-ruby**, a mise backend plugin that manages Ruby versions using the rv tool. It provides fast Ruby installation by downloading pre-built binaries instead of compiling from source.
 
 ## Key Concepts
 
 ### Backend Plugin Architecture
-- **Backend plugins** manage families of tools from an ecosystem (package managers, tool families)
-- Tools are referenced as `<BACKEND>:<tool>@<version>` (e.g., `npm:prettier@3.0.0`)
-- Three required hooks implement the plugin lifecycle:
-  - `BackendListVersions` - Lists available versions for a tool
-  - `BackendInstall` - Installs a specific version of a tool
-  - `BackendExecEnv` - Sets up environment variables for the tool
+- **Backend name**: `rv-ruby`
+- **Tool name**: `ruby` (the only tool this backend manages)
+- **Usage**: `rv-ruby@3.3.9` (simple) or `rv-ruby:ruby@3.3.9` (explicit) or `ruby@3.3.9` with alias
+- **Underlying tool**: [rv](https://github.com/spinel-coop/rv) - Fast Ruby version manager in Rust
 
-### Placeholders to Replace
-When implementing a new backend, replace these placeholders throughout the codebase:
-- `<BACKEND>` → Your backend name (e.g., `npm`, `cargo`, `pip`)
-- `<GITHUB_USER>` → Your GitHub username or organization
-- `<TEST_TOOL>` → A real tool name your backend can install (for testing)
+### Compatibility with gem Backend
+This backend is designed to work with mise's built-in `gem` backend through aliasing:
+```toml
+[alias]
+ruby = "rv-ruby"
 
-Files containing placeholders:
-- `metadata.lua` - Plugin metadata
-- `hooks/*.lua` - Backend implementation
-- `mise-tasks/test` - Test script
+[tools]
+ruby = "3.3.9"           # Resolves to rv-ruby via alias
+"gem:bundler" = "latest"  # gem backend finds ruby via alias
+```
+
+Without alias, use the backend directly:
+```toml
+[tools]
+rv-ruby = "3.3.9"         # Simple syntax (recommended)
+"gem:bundler" = "latest"  # Won't work without ruby alias
+```
 
 ## Development Commands
 
 ### Local Testing Workflow
 ```bash
 # Link plugin for development
-mise plugin link --force <BACKEND> .
+mise plugin link --force rv-ruby .
 
-# List available versions for a tool
-mise ls-remote <BACKEND>:<tool>
+# List available Ruby versions
+mise ls-remote rv-ruby
 
-# Install a specific version
-mise install <BACKEND>:<tool>@<version>
+# Install a specific Ruby version
+mise install rv-ruby@3.3.9
 
-# Execute a tool
-mise exec <BACKEND>:<tool>@<version> -- <tool> --version
+# Execute Ruby
+mise exec rv-ruby@3.3.9 -- ruby --version
 
 # Run full test suite
 mise run test
@@ -71,180 +76,212 @@ hk fix
 ## Code Architecture
 
 ### Plugin Entry Point: `metadata.lua`
-Defines plugin metadata returned to mise:
-- Plugin name, version, description
-- Author, homepage, license
-- Optional user notes
+Defines plugin metadata:
+- Plugin name: `rv-ruby`
+- Manages only the `ruby` tool
+- Requires rv to be installed (handled via ubi backend dependency)
 
 ### Hook Functions: `hooks/*.lua`
 
 #### `backend_list_versions.lua`
-**Purpose**: Return list of available versions for a tool
+**Purpose**: Return list of available Ruby versions from rv
 
-**Context variables**:
-- `ctx.tool` - Tool name (e.g., `"prettier"`)
+**Implementation**:
+1. Executes `rv ruby list --format json`
+2. Parses JSON response
+3. Extracts unique version strings (strips "ruby-" prefix)
+4. Returns deduplicated array of versions
 
-**Return value**: `{versions = {"1.0.0", "2.0.0", ...}}`
-
-**Implementation patterns**:
-- API-based: Query registry API (npm, PyPI, crates.io)
-- Command-based: Execute CLI commands and parse output
-- File-based: Parse local registry or manifest files
+**Key validation**: Accepts both `tool == "ruby"` and `tool == "rv-ruby"` for flexibility
 
 #### `backend_install.lua`
-**Purpose**: Install a specific version of a tool to a directory
+**Purpose**: Install a specific Ruby version using rv
 
-**Context variables**:
-- `ctx.tool` - Tool name
-- `ctx.version` - Version to install
-- `ctx.install_path` - Target installation directory
+**Implementation**:
+1. Validates inputs (tool name, version format, install path)
+2. Creates installation directory
+3. Executes `rv ruby install <version> --install-dir <path>`
 
-**Return value**: `{}`
+**Security features**:
+- Version format validation (prevents shell injection)
+- Install path sanitization (blocks shell metacharacters)
 
-**Implementation patterns**:
-- Package manager: Run install command with target directory
-- Binary download: Download archive from URL, extract to install_path
-- Build from source: Clone repository, checkout version, build and install
+**Directory structure**: rv installs to `<install_path>/ruby-<version>/`
 
 #### `backend_exec_env.lua`
-**Purpose**: Set up environment variables for running the tool
+**Purpose**: Set up environment for running Ruby
 
-**Context variables**:
-- `ctx.tool` - Tool name
-- `ctx.version` - Tool version
-- `ctx.install_path` - Installation directory
+**Environment variables set**:
+- `PATH`: `<install_path>/ruby-<version>/bin`
+- `GEM_HOME`: `<install_path>/ruby-<version>/lib/ruby/gems/<major>.<minor>.0`
+- `GEM_PATH`: Same as GEM_HOME (for gem isolation)
 
-**Return value**: `{env_vars = {{key = "PATH", value = "/path/to/bin"}, ...}}`
+**Gem version parsing**: Converts version like `3.3.9` to gem path `3.3.0`
 
-**Common patterns**:
-- Add `bin/` directory to PATH
-- Set tool-specific home/config directories
-- Platform-specific library paths (LD_LIBRARY_PATH, DYLD_LIBRARY_PATH)
-
-### Available Lua Modules
+## Available Lua Modules
 
 Backend plugins have access to these built-in modules:
-
 - `cmd` - Execute shell commands: `cmd.exec("command")`
-- `http` - HTTP client: `http.get({url = "..."})`, `http.download({url = "...", output = "..."})`
 - `json` - JSON parsing: `json.decode(str)`, `json.encode(table)`
-- `file` - File operations: `file.exists(path)`, `file.read(path)`, `file.join_path(a, b)`
+- `file` - File operations: `file.join_path(a, b)`
 
-### Runtime Information: `RUNTIME` Global
+## Runtime Information
 
-Platform detection available in all hooks:
-- `RUNTIME.osType` - Operating system: `"Darwin"`, `"Linux"`, `"Windows"`
-- `RUNTIME.archType` - CPU architecture: `"amd64"`, `"arm64"`, etc.
-
-Example:
-```lua
-if RUNTIME.osType == "Darwin" then
-    -- macOS-specific logic
-elseif RUNTIME.osType == "Linux" then
-    -- Linux-specific logic
-end
-```
+Platform detection available via `RUNTIME` global:
+- `RUNTIME.osType` - `"Darwin"`, `"Linux"`, `"Windows"`
+- `RUNTIME.archType` - `"amd64"`, `"arm64"`, etc.
 
 ## Testing Strategy
 
 ### Test File: `mise-tasks/test`
-Bash script that validates the plugin:
-1. Links the plugin with `mise plugin link --force`
-2. Clears cache for fresh testing
-3. Tests version listing with `mise ls-remote`
-4. Tests installation with `mise install`
-5. Tests tool execution with `mise exec`
-
-**Note**: The test script will fail until you:
-- Replace `<BACKEND>` and `<TEST_TOOL>` placeholders
-- Implement the three backend hooks
+Validates all functionality:
+1. **Version listing** - Tests `BackendListVersions`
+2. **Installation** - Tests `BackendInstall`
+3. **Ruby execution** - Tests PATH setup in `BackendExecEnv`
+4. **Gem environment** - Tests GEM_HOME/GEM_PATH setup
+5. **Gem installation** - End-to-end validation
 
 ### CI Pipeline: `.github/workflows/ci.yml`
 - Runs on Ubuntu and macOS
 - Executes `mise run ci` (lint + test)
-- Triggered on push to main, PRs, and manual dispatch
 
-## Code Quality Tools
+## Using with gem Backend
 
-### Linting: `hk.pkl`
-Pre-commit hooks and linters configured via hk:
-- **luacheck** - Lua static analysis (configured in `.luacheckrc`)
-- **stylua** - Lua code formatting (configured in `stylua.toml`)
-- **actionlint** - GitHub Actions workflow validation
+### Recommended Setup
 
-### Luacheck Configuration: `.luacheckrc`
-- Standard: Lua 5.1
-- Allowed globals: `PLUGIN`, `RUNTIME`
-- Read-only globals: `cmd`, `http`, `json`, `file`, standard Lua functions
-- Ignores: Line length, trailing whitespace, unused arguments in hook functions
-
-## Environment Variables
-
-### `mise.toml` Configuration
+In your project's `mise.toml`:
 ```toml
-[env]
-MISE_USE_VERSIONS_HOST = "0"  # Disable version host for backend plugins
+[alias]
+ruby = "rv-ruby"
+
+[tools]
+ruby = "3.3.9"          # Resolves to rv-ruby:ruby via alias
+"gem:bundler" = "latest" # gem backend finds ruby via alias
 ```
 
-## Common Implementation Patterns
+### How It Works
 
-### Error Handling
+1. **gem backend declares dependency** on `"ruby"`
+2. **Alias resolves** `ruby` → `rv-ruby:ruby`
+3. **gem backend gets environment** from rv-ruby's Ruby installation
+4. **gem install runs** with PATH pointing to rv-ruby's Ruby
+
+### Alternative: Direct Installation
+
+Without aliasing, install gems directly:
+```bash
+mise exec rv-ruby@3.3.9 -- gem install bundler
+```
+
+Or use tasks:
+```toml
+[tools]
+rv-ruby = "3.3.9"
+
+[tasks.gems]
+run = """
+gem install bundler
+gem install rails
+"""
+```
+
+## rv-Specific Behavior
+
+### Fast Installation
+rv downloads pre-built Ruby binaries instead of compiling from source:
+- Installation typically completes in <1 second
+- Supports Ruby 3.2.x, 3.3.x, and 3.4.x+
+- Platform support: macOS 14+, Ubuntu 24.04+
+
+### Directory Structure
+rv installs Ruby into a `ruby-<version>` subdirectory:
+```
+~/.local/share/mise/installs/rv-ruby/ruby/3.3.9/
+└── ruby-3.3.9/
+    ├── bin/
+    │   ├── ruby
+    │   ├── gem
+    │   └── bundle
+    └── lib/
+        └── ruby/
+            └── gems/
+                └── 3.3.0/
+```
+
+This differs from the template assumption and is handled correctly in `BackendExecEnv`.
+
+## Error Handling Patterns
+
+### Input Validation
 ```lua
--- Validate inputs
-if not tool or tool == "" then
-    error("Tool name cannot be empty")
+-- Version format (semantic versioning only)
+if not version:match("^%d+%.%d+%.%d+$") and not version:match("^%d+%.%d+%.%d+%-[%w%.%-]+$") then
+    error("Invalid version format: " .. version)
 end
 
--- Check API responses
-if resp.status_code ~= 200 then
-    error("API returned status " .. resp.status_code .. " for " .. tool)
-end
-
--- Validate results
-if #versions == 0 then
-    error("No versions found for " .. tool)
+-- Path sanitization
+if install_path:match("[;&|`$()]") then
+    error("Install path contains invalid characters")
 end
 ```
 
-### Platform-Specific Downloads
+### Tool Name Validation
 ```lua
-local platform = RUNTIME.osType:lower()
-local arch = RUNTIME.archType
-local url = "https://releases.example.com/" .. tool .. "/" .. version ..
-            "/" .. tool .. "-" .. platform .. "-" .. arch .. ".tar.gz"
+-- Accept both "ruby" and "rv-ruby" as the tool name
+-- This allows both rv-ruby@version and rv-ruby:ruby@version
+if tool ~= "ruby" and tool ~= "rv-ruby" then
+    error("mise-rv-ruby backend only supports ruby. Use: rv-ruby@version or rv-ruby:ruby@version")
+end
 ```
 
-### PATH Setup
-```lua
-local file = require("file")
-local bin_path = file.join_path(install_path, "bin")
+## Publishing Checklist
 
-return {
-    env_vars = {
-        {key = "PATH", value = bin_path}
-    }
-}
-```
-
-## Publishing Process
-
-1. Replace all placeholders with real values
-2. Implement the three backend hooks
-3. Test locally: `mise run ci`
-4. Push to GitHub repository
-5. Test installation: `mise plugin install <backend> https://github.com/<user>/<repo>`
-6. (Optional) Transfer to [mise-plugins](https://github.com/mise-plugins) organization
-7. Add to mise registry via PR to [registry.toml](https://github.com/jdx/mise/blob/main/registry.toml)
-
-## Reference Documentation
-
-- [Backend Plugin Development Guide](https://mise.jdx.dev/backend-plugin-development.html)
-- [Backend Architecture](https://mise.jdx.dev/dev-tools/backend_architecture.html)
-- [Lua Modules Reference](https://mise.jdx.dev/plugin-lua-modules.html)
-- [mise-plugins Organization](https://github.com/mise-plugins)
+Before publishing:
+- [ ] All tests pass: `mise run ci`
+- [ ] Version listing works: `mise ls-remote rv-ruby`
+- [ ] Installation works: `mise install rv-ruby@3.3.9`
+- [ ] Ruby execution works: `mise exec rv-ruby@3.3.9 -- ruby --version`
+- [ ] Gem environment is correct: `mise exec rv-ruby@3.3.9 -- gem env`
+- [ ] Explicit syntax works: `mise ls-remote rv-ruby:ruby`
+- [ ] gem backend integration works with alias
+- [ ] Documentation is complete
+- [ ] GitHub repository exists and is public
 
 ## Real-World Examples
 
-Study these existing backend plugins for implementation patterns:
-- [vfox-npm](https://github.com/jdx/vfox-npm) - npm package manager backend
-- mise built-in backends: npm, cargo, pip, gem
+### Basic Usage
+```bash
+# Install rv-ruby plugin
+mise plugin install rv-ruby https://github.com/deevus/mise-rv-ruby
+
+# Install Ruby (simple syntax)
+mise install rv-ruby@3.3.9
+
+# Use Ruby
+mise exec rv-ruby@3.3.9 -- ruby --version
+
+# Or with explicit syntax
+mise install rv-ruby:ruby@3.3.9
+```
+
+### With Alias (Recommended)
+```toml
+# mise.toml
+[alias]
+ruby = "rv-ruby"
+
+[tools]
+ruby = "3.3.9"
+"gem:bundler" = "latest"
+```
+
+```bash
+mise install  # Installs both Ruby and bundler
+bundle install  # Uses rv-ruby's Ruby and gem
+```
+
+## Reference
+
+- [rv GitHub Repository](https://github.com/spinel-coop/rv)
+- [mise Backend Plugin Development](https://mise.jdx.dev/backend-plugin-development.html)
+- [mise Alias Documentation](https://mise.jdx.dev/configuration.html#alias)
