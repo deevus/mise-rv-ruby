@@ -51,6 +51,41 @@ function PLUGIN:BackendListVersions(ctx)
         table.insert(versions, version)
     end
 
+    -- Sort versions in ascending order (oldest first)
+    -- Use semantic version comparison: split by dots and compare numerically
+    table.sort(versions, function(a, b)
+        local a_parts = {}
+        local b_parts = {}
+
+        -- Split version strings by dots
+        for part in a:gmatch("[^%.%-]+") do
+            table.insert(a_parts, tonumber(part) or part)
+        end
+        for part in b:gmatch("[^%.%-]+") do
+            table.insert(b_parts, tonumber(part) or part)
+        end
+
+        -- Compare each part numerically
+        for i = 1, math.max(#a_parts, #b_parts) do
+            local a_val = a_parts[i] or 0
+            local b_val = b_parts[i] or 0
+
+            -- Convert to numbers for comparison if both are numbers
+            if type(a_val) == "number" and type(b_val) == "number" then
+                if a_val ~= b_val then
+                    return a_val < b_val
+                end
+            else
+                -- Fallback to string comparison for non-numeric parts
+                if a_val ~= b_val then
+                    return tostring(a_val) < tostring(b_val)
+                end
+            end
+        end
+
+        return false
+    end)
+
     if #versions == 0 then
         error("No Ruby versions found from rv")
     end
