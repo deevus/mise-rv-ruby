@@ -23,6 +23,16 @@ function PLUGIN:BackendInstall(ctx)
         error("mise-rv backend only supports 'ruby' as the tool name. Use: rv:ruby@version")
     end
 
+    -- Validate version format to prevent shell injection (semantic versions only)
+    if not version:match("^%d+%.%d+%.%d+$") and not version:match("^%d+%.%d+%.%d+%-[%w%.%-]+$") then
+        error("Invalid version format: " .. version .. ". Expected semantic version (e.g., 3.3.9)")
+    end
+
+    -- Validate install_path doesn't contain shell metacharacters
+    if install_path:match("[;&|`$()]") then
+        error("Install path contains invalid characters")
+    end
+
     -- Create installation directory
     local cmd = require("cmd")
     cmd.exec("mkdir -p " .. install_path)

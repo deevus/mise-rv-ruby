@@ -15,6 +15,11 @@ function PLUGIN:BackendExecEnv(ctx)
         error("Version cannot be empty")
     end
 
+    -- Only support "ruby" as the tool name
+    if tool and tool ~= "ruby" then
+        error("mise-rv backend only supports 'ruby' as the tool name. Use: rv:ruby@version")
+    end
+
     -- rv installs Ruby into a ruby-{version} subdirectory
     local file = require("file")
     local ruby_root = file.join_path(install_path, "ruby-" .. version)
